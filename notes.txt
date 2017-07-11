@@ -1,0 +1,5 @@
+opcodes http://6502.org/tutorials/6502opcodes.html
+
+great post http://nintendoage.com/forum/messageview.cfm?catid=22&threadid=4440
+
+wiki https://en.wikibooks.org/wiki/NES_Programming#Hardware_specifications
