@@ -1,7 +1,7 @@
 Nintendo Entertainment System (NES) Emulator [Rust]
 ===
 
-#### Author: Kyron Taylor (gitbugr)
+#### Author: Kyron Taylor (gitbugr)
 
 #### Language: Rust
 
