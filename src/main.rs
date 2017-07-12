@@ -49,8 +49,8 @@ impl NESEmulator {
             x: 0x00,
             y: 0x00,
             sp: 0x00,
-            pc: 0x8000, // start reading instructions from byte 0x8000
-            p: 0b00000000,
+            pc: 0xFFFC, // start reading instructions from byte 0x8000
+            p: 0x34,
             cpu_memory: [0u8; 0xFFFF],
             clock: 1.79, // US-region
             filepath: f.to_owned()
@@ -120,24 +120,143 @@ impl NESEmulator {
             // This instruction compares the contents of the Y register with another memory held value and sets the zero and carry flags as appropriate.
             // (Immediate)
             0xC0 => {
-                print!("CPY #{:2x}\n",self.cpu_memory[(self.pc+0x0001) as usize]);
+                print!("CPY #{:0>2x}\n",self.cpu_memory[(self.pc+1) as usize]);
                 if self.y >= self.cpu_memory[(self.pc+0x0001) as usize] { self.set_bitflag(0,true); }
-                else { self.set_bitflag(0,false); }
+                else { self.set_bitflag(0,false); } // set carry flag
 
                 if self.y == self.cpu_memory[(self.pc+0x0001) as usize] { self.set_bitflag(1,true); }
-                else { self.set_bitflag(1,false); }
+                else { self.set_bitflag(1,false); } // set zero flag
 
                 if check_bit(self.cpu_memory[(self.pc+0x0001) as usize], 7) { self.set_bitflag(7,true); }
-                else { self.set_bitflag(7,false); }
+                else { self.set_bitflag(7,false); } // set negative flag
 
-                self.pc+=0x0002;
+                self.pc+=0x0002; // next instruction
+            },
+            // SLO - Shift Left OR accumulator
+            // This instruction shift left one bit in memory, then ORs the accumulator with the memory address and sets the negative, zero and carry flags as appropriate.
+            // (Immediate)
+            0x07 => {
+                print!("SLO #{:0>2x}\n",self.cpu_memory[(self.pc+1) as usize]);
+                if self.cpu_memory[(self.pc+0x0001) as usize] >= 0b10000000 { self.set_bitflag(0,true); }
+                else { self.set_bitflag(0,false); } // set carry flag
+
+                let addr = self.cpu_memory[(self.pc+0x0001) as usize] << 1;
+                self.a = self.a | addr;
+
+                if self.a == 0x00 { self.set_bitflag(1,true); }
+                else { self.set_bitflag(1,false); } // set zero flag
+
+                if check_bit(addr, 7) { self.set_bitflag(7,true); }
+                else { self.set_bitflag(7,false); } // set negative flag
+
+                self.pc+=0x0002; // next instruction
+            },
+            // SLO - Shift Left OR accumulator
+            // This instruction shift left one bit in memory, then ORs the accumulator with the memory address and sets the negative, zero and carry flags as appropriate.
+            // (Absolute)
+            0x0f => {
+                print!("SLO #{:0>2x}{:0>2x}\n",self.cpu_memory[(self.pc+2) as usize],self.cpu_memory[(self.pc+1) as usize]);
+                let mut addr = two_u8_to_u6(self.cpu_memory[(self.pc+2) as usize], self.cpu_memory[(self.pc+1) as usize]);
+
+                if addr >= 0b1000000000000000 { self.set_bitflag(0,true); }
+                else { self.set_bitflag(0,false); } // set carry flag
+
+                addr = addr << 1;
+                self.a = self.a | (addr as u8);
+
+                if self.a == 0x00 { self.set_bitflag(1,true); }
+                else { self.set_bitflag(1,false); } // set zero flag
+
+                if check_bit(addr as u8, 7) { self.set_bitflag(7,true); }
+                else { self.set_bitflag(7,false); } // set negative flag
+
+                self.pc+=0x0003; // next instruction
+            },
+            // SLO - Shift Left OR accumulator
+            // This instruction shift left one bit in memory, then ORs the accumulator with the memory address and sets the negative, zero and carry flags as appropriate.
+            // (Indirect, X)
+            0x03 => {
+                print!("SLO ({:0>2x},x)\n",self.cpu_memory[(self.pc+1) as usize]);
+                let mut addr = self.cpu_memory[(self.pc+1) as usize];
+                        addr = self.cpu_memory[(addr+self.x) as usize];
+
+                if addr >= 0b10000000 { self.set_bitflag(0,true); }
+                else { self.set_bitflag(0,false); } // set carry flag
+
+                let addr = addr << 1;
+                self.a = self.a | addr;
+
+                if self.a == 0x00 { self.set_bitflag(1,true); }
+                else { self.set_bitflag(1,false); } // set zero flag
+
+                if check_bit(addr, 7) { self.set_bitflag(7,true); }
+                else { self.set_bitflag(7,false); } // set negative flag
+
+                self.pc+=0x0002; // next instruction
+            },
+            // ORA - OR Accumulator
+            // Performs a bitwise OR with the Accumulator
+            // (Indirect, X)
+            0x01 => {
+                print!("ORA ({:0>2x},x)\n",self.cpu_memory[(self.pc+1) as usize]);
+                let mut addr = self.cpu_memory[(self.pc+1) as usize];
+                        addr = self.cpu_memory[(addr+self.x) as usize];
+
+                self.a = self.a | addr;
+
+                if self.a == 0x00 { self.set_bitflag(1,true); }
+                else { self.set_bitflag(1,false); } // set zero flag
+
+                if check_bit(addr, 7) { self.set_bitflag(7,true); }
+                else { self.set_bitflag(7,false); } // set negative flag
+
+                self.pc+=0x0002; // next instruction
+            },
+            // ORA - OR Accumulator
+            // Performs a bitwise OR with the Accumulator
+            // (Indirect, Y)
+            0x11 => {
+                print!("ORA ({:0>2x},y)\n",self.cpu_memory[(self.pc+1) as usize]);
+                let mut addr = self.cpu_memory[(self.pc+1) as usize];
+                        addr = self.cpu_memory[(addr+self.x) as usize];
+
+                self.a = self.a | addr;
+
+                if self.a == 0x00 { self.set_bitflag(1,true); }
+                else { self.set_bitflag(1,false); } // set zero flag
+
+                if check_bit(addr, 7) { self.set_bitflag(7,true); }
+                else { self.set_bitflag(7,false); } // set negative flag
+
+                self.pc+=0x0002; // next instruction
+            },
+            // HLT - Halt
+            // Stop Processor Counter
+            // (Implied)
+            0x02 => {
+                print!("HLT\n");
+                //wait(1);
+                self.pc+=0x0001;
+            },
+            // DOP - Double NOP
+            // No significance. PC moves 3 bytes forward
+            // (Absolute)
+            0x04 => {
+                print!("DOP ${:0>2x}\n",self.cpu_memory[self.pc as usize+1]);
+                self.pc+=0x0002; // next instruction
+            },
+            // TOP - Triple NOP
+            // No significance. PC moves 3 bytes forward
+            // (Absolute)
+            0x0c => {
+                print!("TOP ${:0>2x}{:0>2x}\n",self.cpu_memory[self.pc as usize+1],self.cpu_memory[self.pc as usize+2]);
+                self.pc+=0x0003; // next instruction
             },
             // Default
             _ => {
-                print!("${:2x}\n",self.cpu_memory[self.pc as usize]);
-                let mut child = Command::new("sleep").arg("10").spawn().unwrap();
-                let _result = child.wait().unwrap();
-                self.pc+=0x0001;
+                print!("${:0>2x}\n",self.cpu_memory[self.pc as usize]);
+                wait(10);
+                self.pc+=0x0001; // next instruction
             }
         }
     }
@@ -148,7 +267,7 @@ impl NESEmulator {
 
     pub fn run(&mut self) {
         loop {
-            print!("pc: ${:0>4x}, p: {:0>8b}, op: ", self.pc, self.p);
+            print!("[0x{:0>4x}] a: ${:0>2x}, x: ${:0>2x}, y: ${:0>2x}, p: {:0>8b}, op: ", self.pc, self.a, self.x, self.y, self.p);
             self.tick();
         }
 
@@ -199,6 +318,12 @@ fn main(){
     return();
 }
 
+fn two_u8_to_u6(a:u8,b:u8) -> u16 {
+    let mut nb:u16 = 0;
+    nb = (nb | (a as u16)) << 8;
+    nb = nb | b as u16;
+    return(nb);
+}
 
 fn check_bit(val:u8, pos:usize) -> bool{
     let positions:[u8;8] = [
@@ -215,4 +340,9 @@ fn check_bit(val:u8, pos:usize) -> bool{
         return(true);
     }
     return(false);
+}
+
+fn wait(t:i32){
+    let mut child = Command::new("sleep").arg(t.to_string()).spawn().unwrap();
+    let _result = child.wait().unwrap();
 }
