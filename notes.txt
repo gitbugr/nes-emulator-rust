@@ -1,5 +1,19 @@
-opcodes http://6502.org/tutorials/6502opcodes.html
+LINKS
+===
+opcodes: http://6502.org/tutorials/6502opcodes.html
+great: post http://nintendoage.com/forum/messageview.cfm?catid=22&threadid=4440
+wiki: https://en.wikibooks.org/wiki/NES_Programming#Hardware_specifications
 
-great post http://nintendoage.com/forum/messageview.cfm?catid=22&threadid=4440
+Addressing Modes
+===
+Non-Indexed, non memory
+> Accumulator: Target is the ‘A’ register		`LSR A`		(2 bytes)
+> Immediate: Data is defined as byte after opcode.	`ORA #B2`	(2 bytes)
+> Implied: Instruction carries data/destination.	`CLC`		(1 byte)
 
-wiki https://en.wikibooks.org/wiki/NES_Programming#Hardware_specifications
+Non-Indexed memory ops
+> Relative: Only used for branch ops. Offset of PC. Singed byte.	(2 bytes)
+> Absolute: Memory location exactly. (little endian)	`JMP $4032`	(3 bytes)
+> Zero-Page: Only capable of addressing first 256 bytes	`LDA $35`	(2 bytes)
+> Indirect: JMP op only - sets PC to addr def at pointer`JMP ($1000)`	(3 bytes)
+> 
