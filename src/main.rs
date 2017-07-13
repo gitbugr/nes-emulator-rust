@@ -31,7 +31,7 @@ pub struct NESEmulator {
     p: u8, // Negative, oVerflow, ss, Decimal, Interupt, Zero, Carry
 
     // Memory
-    cpu_memory: [u8; 0xFFFF],
+    cpu_memory: [u8; 0x10000],
 
     // Clock Speed
     clock: f32,
@@ -49,9 +49,9 @@ impl NESEmulator {
             x: 0x00,
             y: 0x00,
             sp: 0x00,
-            pc: 0xFFFC, // start reading instructions from byte 0x8000
+            pc: 0x0000, // start reading instructions from byte 0x8000
             p: 0x34,
-            cpu_memory: [0u8; 0xFFFF],
+            cpu_memory: [0u8; 0x10000],
             clock: 1.79, // US-region
             filepath: f.to_owned()
         }
@@ -66,12 +66,16 @@ impl NESEmulator {
         let mut region:bool = false;
         let mut rom_mapper_type:u8 = 0;
 
+        let mut rom_banks:u8 = 0;
+
         // read file and store bytes in buffer
         file.read_to_end(&mut buffer);
 
         // check header
         if b"NES" == &buffer[0..3] { println!("Found .NES Header!"); }
         else { println!("NOT .NES FILETYPE!"); return(); }
+
+        rom_banks = buffer[4];
 
         println!("Has {:?} 16kB ROM banks!",&buffer[4]);
         println!("Has {:?} 8kB VROM banks!",&buffer[5]);
@@ -89,7 +93,7 @@ impl NESEmulator {
         println!("ROM Mapper Type: {:?}",rom_mapper_type);
 
         // check has trainer
-        if &buffer[7] & 0b00000100 == 0b00000100 { has_trainer=true; println!("Has trainer section!") }
+        if &buffer[6] & 0b00000100 == 0b00000100 { has_trainer=true; println!("Has trainer section!") }
         else { println!("No trainer section!"); }
 
         println!("Has {:?} 8kB RAM banks!",&buffer[7]);
@@ -98,10 +102,16 @@ impl NESEmulator {
         else { println!("Region: NTSC"); }
 
         println!("Loading ROM bank #1 into memory $8000 - $10000...");
-        for i in 0x0000..0x8000-16{
-            self.cpu_memory[0x8000+i] = buffer[16+i];
+
+        for bank in 0..2 {
+            for i in 0x0000..0x4000 {
+                self.cpu_memory[0x8000+(0x4000 * bank)+i] = buffer[16+(0x4000 * bank)+i];
+            }
         }
-        println!("Loaded!")
+        println!("Loaded!");
+        let reset_vector:u16 = two_u8_to_u16(self.cpu_memory[0xFFFD],self.cpu_memory[0xFFFC]);
+        println!("Setting pc to reset_vector: ${:0>4x}",reset_vector);
+        self.pc = reset_vector;
     }
 
     // Tick function
@@ -112,9 +122,121 @@ impl NESEmulator {
             // Pushes a copy of the status flags on to the stack.
             0x08 => {
                 print!("PHP\n");
-                self.cpu_memory[self.sp as usize] = self.p;
-                self.sp+=0x01;
+                let status = self.p.to_owned();
+                self.push_to_stack(status);
                 self.pc+=0x0001;
+            },
+            // LDA - LoaD Accumulator
+            // Loads value into accumulator
+            // (Immediate)
+            0xA9 =>{
+                print!("LDA #{:0>2x}\n",self.cpu_memory[(self.pc+1) as usize]);
+                self.a = self.cpu_memory[(self.pc+1) as usize];
+                if self.a == 0 { self.set_bitflag(1,true) }
+                else { self.set_bitflag(1,false) } // set zero flag
+                self.pc+=0x0002
+            },
+            // LDA - LoaD Accumulator
+            // Loads value into accumulator
+            // (Absolute)
+            0xAD =>{
+                print!("LDA ${:0>2x}{:0>2x}\n",self.cpu_memory[(self.pc+1) as usize],self.cpu_memory[(self.pc+2) as usize]);
+                let addr = two_u8_to_u16(self.cpu_memory[(self.pc+2) as usize], self.cpu_memory[(self.pc+1) as usize]);
+                self.a = self.cpu_memory[addr as usize];
+                if self.a == 0 { self.set_bitflag(1,true) }
+                else { self.set_bitflag(1,false) } // set zero flag
+                self.pc+=0x0003
+            },
+            // LDX - LoaD X register
+            // Loads value into x register
+            // (Immediate)
+            0xA2 =>{
+                print!("LDX #{:0>2x}\n",self.cpu_memory[(self.pc+1) as usize]);
+                self.x = self.cpu_memory[(self.pc+1) as usize];
+                if self.x == 0 { self.set_bitflag(1,true) }
+                else { self.set_bitflag(1,false) } // set zero flag
+                self.pc+=0x0002
+            },
+            // LDY - LoaD Y register
+            // Loads value into y register
+            // (Immediate)
+            0xA0 =>{
+                print!("LDY #{:0>2x}\n",self.cpu_memory[(self.pc+1) as usize]);
+                self.y = self.cpu_memory[(self.pc+1) as usize];
+                if self.y == 0 { self.set_bitflag(1,true) }
+                else { self.set_bitflag(1,false) } // set zero flag
+                self.pc+=0x0002
+            },
+            // AND - bitwise function
+            // performs bitwise AND with accumulator
+            // (Immediate)
+            0x29 =>{
+                print!("AND #{:0>2x}\n",self.cpu_memory[(self.pc+1) as usize]);
+                self.a = self.a & self.cpu_memory[(self.pc+1) as usize];
+                if self.x == 0 { self.set_bitflag(1,true) }
+                else { self.set_bitflag(1,false) } // set zero flag
+                self.pc+=0x0002
+            },
+            // BEQ - branch on equal
+            // branches if last result was equal
+            // (Immediate)
+            0xF0 => {
+                print!("BEQ #{:0>2x}\n",self.cpu_memory[(self.pc+1) as usize]);
+                if check_bit(self.p, 1) {
+                    if self.cpu_memory[(self.pc+1) as usize] > 0x7F
+                        { self.pc += two_u8_to_u16(0,self.cpu_memory[(self.pc+1) as usize] - 0x7F); }
+                    else
+                        { self.pc -= two_u8_to_u16(0,0x7F - self.cpu_memory[(self.pc+1) as usize]); }
+                }
+                else {
+                    self.pc+=0x0002;
+                }
+            }
+            // STA - STore Accumulator
+            // Stores Accumulator into Memory
+            // (Absolute)
+            0x8d =>{
+                print!("STA ${:0>2x}{:0>2x}\n",self.cpu_memory[(self.pc+1) as usize],self.cpu_memory[(self.pc+2) as usize]);
+                let addr = two_u8_to_u16(self.cpu_memory[(self.pc+2) as usize], self.cpu_memory[(self.pc+1) as usize]);
+                self.cpu_memory[addr as usize] = self.a;
+                self.pc+=0x0003
+            },
+            // STA - STore Accumulator
+            // Stores Accumulator into Memory
+            // (Indirect, Y)
+            0x91 =>{
+                print!("STA (${:0>2x}),y\n",self.cpu_memory[(self.pc+1) as usize]);
+                let zp = self.cpu_memory[(self.pc+1) as usize];
+                let addr1 = self.cpu_memory[two_u8_to_u16(0,zp) as usize];
+                let addr2 = self.cpu_memory[two_u8_to_u16(0,zp+1) as usize];
+                self.a = self.cpu_memory[(two_u8_to_u16(addr2,addr1) + (self.y as u16)) as usize];
+                self.pc+=0x0002
+            },
+            // STY - STore Y register
+            // Stores Y register into Memory
+            // (Zero Page)
+            0x84 =>{
+                print!("STY ${:0>2x}\n",self.cpu_memory[(self.pc+1) as usize]);
+                let addr = two_u8_to_u16(0, self.cpu_memory[(self.pc+1) as usize]);
+                self.cpu_memory[addr as usize] = self.y;
+                self.pc+=0x0002
+            },
+            // TXS - Transfer X to Stack pointer
+            // Stores value of x in memory at the stack pointer
+            // (Implied)
+            0x9a =>{
+                print!("TXS\n");
+                let x = self.x.to_owned();
+                self.cpu_memory[self.sp as usize] = x;
+                self.pc+=0x0001
+            },
+            // DEY - DEcrement Y register
+            // Decrements Y register by one
+            // (Implied)
+            0x88 =>{
+                print!("DEY\n");
+                self.y-=1;
+                self.pc+=0x0001
             },
             // CPY - Compare Y Register
             // This instruction compares the contents of the Y register with another memory held value and sets the zero and carry flags as appropriate.
@@ -156,7 +278,7 @@ impl NESEmulator {
             // (Absolute)
             0x0f => {
                 print!("SLO #{:0>2x}{:0>2x}\n",self.cpu_memory[(self.pc+2) as usize],self.cpu_memory[(self.pc+1) as usize]);
-                let mut addr = two_u8_to_u6(self.cpu_memory[(self.pc+2) as usize], self.cpu_memory[(self.pc+1) as usize]);
+                let mut addr = two_u8_to_u16(self.cpu_memory[(self.pc+2) as usize], self.cpu_memory[(self.pc+1) as usize]);
 
                 if addr >= 0b1000000000000000 { self.set_bitflag(0,true); }
                 else { self.set_bitflag(0,false); } // set carry flag
@@ -238,6 +360,23 @@ impl NESEmulator {
                 //wait(1);
                 self.pc+=0x0001;
             },
+            // SEI - SEt Interupt
+            // Sets Interupt Flag
+            // (Implied)
+            0x78 => {
+                print!("SEI\n");
+                self.set_bitflag(2,true);
+                self.pc+=0x0001; // next instruction
+            },
+
+            // CLD - CLear Deciman
+            // Clears Decimal Flag
+            // (Implied)
+            0xD8 => {
+                print!("CLD\n");
+                self.set_bitflag(4,false);
+                self.pc+=0x0001; // next instruction
+            },
             // DOP - Double NOP
             // No significance. PC moves 3 bytes forward
             // (Absolute)
@@ -259,10 +398,12 @@ impl NESEmulator {
                 self.pc+=0x0001; // next instruction
             }
         }
+
     }
 
-    fn push(){
-
+    fn push_to_stack(&mut self, v:u8){
+        self.cpu_memory[0x01FF - self.sp as usize] = v;
+        self.sp+=1; //incriment stack pointer
     }
 
     pub fn run(&mut self) {
@@ -318,7 +459,7 @@ fn main(){
     return();
 }
 
-fn two_u8_to_u6(a:u8,b:u8) -> u16 {
+fn two_u8_to_u16(a:u8,b:u8) -> u16 {
     let mut nb:u16 = 0;
     nb = (nb | (a as u16)) << 8;
     nb = nb | b as u16;
