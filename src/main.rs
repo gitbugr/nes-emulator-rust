@@ -149,16 +149,42 @@ impl NESEmulator {
             },
             // LDA - LoaD Accumulator
             // Loads value into accumulator
+            // (Zero Page)
+            0xA5 =>{
+                print!("LDA ${:0>2x}\n",self.cpu_memory[(self.pc+1) as usize]);
+                let addr = self.cpu_memory[(self.pc+1) as usize];
+                self.a = self.cpu_memory[addr as usize];
+                if self.a == 0 { self.set_bitflag(1,true) }
+                else { self.set_bitflag(1,false) } // set zero flag
+                self.pc+=0x0002
+            },
+            // LDA - LoaD Accumulator
+            // Loads value into accumulator
             // (Absolute, X)
-                                            // TODO When I wake up...
-            // 0xBD =>{
-            //     print!("LDA (${:0>2x}, x)\n",self.cpu_memory[(self.pc+1) as usize] as usize]);
-            //     let addr = two_u8_to_u16(0,self.cpu_memory[(self.pc+1) as usize]);
-            //     self.a = self.cpu_memory[addr as usize];
-            //     if self.a == 0 { self.set_bitflag(1,true) }
-            //     else { self.set_bitflag(1,false) } // set zero flag
-            //     self.pc+=0x0003
-            // },
+            0xBD =>{
+                print!("LDA (${:0>2x}{:0>2x}, x)\n",self.cpu_memory[(self.pc+1) as usize],self.cpu_memory[(self.pc+2) as usize]);
+                let mut addr = two_u8_to_u16(self.cpu_memory[(self.pc+2) as usize], self.cpu_memory[(self.pc+1) as usize]);
+                self.a = self.cpu_memory[addr.wrapping_add(self.x as u16) as usize];
+                if self.a == 0 { self.set_bitflag(1,true) }
+                else { self.set_bitflag(1,false) } // set zero flag
+                if check_bit(self.a,7) { self.set_bitflag(7,true) }
+                else { self.set_bitflag(7,false) } // set negative flag
+                self.pc+=0x0003
+            },
+            // LDA - LoaD Accumulator
+            // Loads value into accumulator
+            // (Absolute, Y)
+            0xB1 =>{
+                print!("LDA (${:0>2x}), y\n",self.cpu_memory[(self.pc+1) as usize]);
+                let mut addr = self.cpu_memory[(self.pc+1) as usize];
+                self.a = self.cpu_memory[(addr.wrapping_add(self.x)) as usize];
+                if self.a == 0 { self.set_bitflag(1,true) }
+                else { self.set_bitflag(1,false) } // set zero flag
+                if check_bit(self.a,7) { self.set_bitflag(7,true) }
+                else { self.set_bitflag(7,false) } // set negative flag
+                self.pc+=0x0002
+            },
+
 
             // LDX - LoaD X register
             // Loads value into x register
@@ -180,6 +206,44 @@ impl NESEmulator {
                 else { self.set_bitflag(1,false) } // set zero flag
                 self.pc+=0x0002
             },
+            // JMP - Jump
+            // Jumps to location in memory
+            // (Absolute)
+            0x4C =>{
+                print!("JMP ${:0>2x}{:0>2x}\n",self.cpu_memory[(self.pc+1) as usize],self.cpu_memory[(self.pc+2) as usize]);
+                let mut addr = two_u8_to_u16(self.cpu_memory[(self.pc+2) as usize], self.cpu_memory[(self.pc+1) as usize]);
+                self.pc = addr;
+            },
+            // JSR - Jump to Subroutine
+            // Jump to New Location Saving Return Address
+            // (Absolute)
+            0x20 =>{
+                print!("JSR ${:0>2x}{:0>2x}\n",self.cpu_memory[(self.pc+1) as usize],self.cpu_memory[(self.pc+2) as usize]);
+                let mut addr = two_u8_to_u16(self.cpu_memory[(self.pc+2) as usize], self.cpu_memory[(self.pc+1) as usize]);
+                let mut to_stack = self.pc.to_owned() + 3;
+                self.push_to_stack(to_stack as u8);
+                self.push_to_stack((to_stack  >> 8) as u8);
+                self.pc = addr;
+            },
+            // RTS - Return to Subroutine
+            // The RTS instruction is used at the end of a subroutine to return to the calling routine. It pulls the program counter (minus one) from the stack.
+            // (Implied)
+            0x60 =>{
+                print!("RTS\n");
+                let mut addr = two_u8_to_u16(self.pop_from_stack(),self.pop_from_stack());
+                self.pc = addr;
+            },
+            // JSR - Jump to Subroutine
+            // Jump to New Location Saving Return Address
+            // (Absolute)
+            0x20 =>{
+                print!("JSR ${:0>2x}{:0>2x}\n",self.cpu_memory[(self.pc+1) as usize],self.cpu_memory[(self.pc+2) as usize]);
+                let mut addr = two_u8_to_u16(self.cpu_memory[(self.pc+2) as usize], self.cpu_memory[(self.pc+1) as usize]);
+                let mut to_stack = self.pc.to_owned();
+                self.push_to_stack(to_stack as u8);
+                self.push_to_stack((to_stack >> 4) as u8);
+                self.pc = addr;
+            },
             // AND - bitwise function
             // performs bitwise AND with accumulator
             // (Immediate)
@@ -196,7 +260,7 @@ impl NESEmulator {
             0x3d =>{
                 print!("AND ${:0>2x}{:0>2x}\n",self.cpu_memory[(self.pc+2) as usize],self.cpu_memory[(self.pc+1) as usize]);
 
-                let addr:u16 = two_u8_to_u16(self.cpu_memory[(self.pc+2) as usize],self.cpu_memory[(self.pc+1) as usize]) + (self.x as u16);
+                let addr:u16 = two_u8_to_u16(self.cpu_memory[(self.pc+2) as usize],self.cpu_memory[(self.pc+1) as usize]).wrapping_add(self.x as u16);
 
                 self.a = self.a & self.cpu_memory[addr as usize];
 
@@ -204,16 +268,39 @@ impl NESEmulator {
                 else { self.set_bitflag(1,false) } // set zero flag
                 self.pc+=0x0003
             },
+            // CMP - Compare Memory and Accumulator
+            // This instruction compares the contents of the accumulator with another memory held value and sets the zero and carry flags as appropriate.
+            // (Immediate)
+            0xC9 => {
+                print!("CMP #{:0>2x}\n",self.cpu_memory[(self.pc+1) as usize]);
+                let res = self.a.wrapping_sub(self.cpu_memory[(self.pc+1) as usize]);
+                if res >= 0 { self.set_bitflag(0,true) }
+                else { self.set_bitflag(0,true) } // set carry flag
+                if res == 0 { self.set_bitflag(1,true) }
+                else { self.set_bitflag(1,true) } // set zero flag
+                if check_bit(res,7) { self.set_bitflag(7,true) }
+                else { self.set_bitflag(7,true) } // set negative flag
+                self.pc+=1;
+            },
+            // BCC - branch if carry clear
+            // branches if carry flag is clear
+            // (Relative)
+            0x90 => {
+                print!("BCC #{:0>2x}\n",self.cpu_memory[(self.pc+1) as usize]);
+                if check_bit(self.p, 0) {
+                    self.pc = self.pc.wrapping_add(self.cpu_memory[(self.pc+1) as usize] as u16 - 1)
+                }
+                else {
+                    self.pc+=0x0002;
+                }
+            },
             // BEQ - branch on equal
             // branches if last result was equal
-            // (Immediate)
+            // (Relative)
             0xF0 => {
                 print!("BEQ #{:0>2x}\n",self.cpu_memory[(self.pc+1) as usize]);
                 if check_bit(self.p, 1) {
-                    if self.cpu_memory[(self.pc+1) as usize] > 0x7F
-                        { self.pc += two_u8_to_u16(0,self.cpu_memory[(self.pc+1) as usize] - 0x7F); }
-                    else
-                        { self.pc -= two_u8_to_u16(0,0x7F - self.cpu_memory[(self.pc+1) as usize]); }
+                    self.pc = self.pc.wrapping_add(self.cpu_memory[(self.pc+1) as usize] as u16 - 1)
                 }
                 else {
                     self.pc+=0x0002;
@@ -225,10 +312,7 @@ impl NESEmulator {
             0xD0 => {
                 print!("BNE #{:0>2x}\n",self.cpu_memory[(self.pc+1) as usize]);
                 if !check_bit(self.p, 1) {
-                    if self.cpu_memory[(self.pc+1) as usize] > 0x7F
-                        { self.pc += two_u8_to_u16(0,self.cpu_memory[(self.pc+1) as usize] - 0x7F); }
-                    else
-                        { self.pc -= two_u8_to_u16(0,0x7F - self.cpu_memory[(self.pc+1) as usize]); }
+                    self.pc = self.pc.wrapping_add(self.cpu_memory[(self.pc+1) as usize] as u16 - 1)
                 }
                 else {
                     self.pc+=0x0002;
@@ -243,6 +327,24 @@ impl NESEmulator {
                 self.cpu_memory[addr as usize] = self.a;
                 self.pc+=0x0003
             },
+            // STA - STore Accumulator
+            // Stores Accumulator into Memory
+            // (Absolute, y)
+            0x99 =>{
+                print!("STA (${:0>2x}{:0>2x}), y\n",self.cpu_memory[(self.pc+1) as usize],self.cpu_memory[(self.pc+2) as usize]);
+                let mut addr = two_u8_to_u16(self.cpu_memory[(self.pc+2) as usize], self.cpu_memory[(self.pc+1) as usize]);
+                        addr = addr.wrapping_add(self.y as u16);
+                self.cpu_memory[addr as usize] = self.a;
+                self.pc+=0x0003
+            },
+            // BPL - Branch on result PLus
+            // Branches if Negative flag == 0
+            // (Relative)
+            0x10=>{
+                print!("BPL ${:0>2x}\n",self.cpu_memory[(self.pc+1) as usize]);
+                if check_bit(self.p,7) { self.pc = self.pc.wrapping_add(self.cpu_memory[(self.pc+1) as usize] as u16 - 1) }
+                else { self.pc += 1 }
+            }
             // STA - STore Accumulator
             // Stores Accumulator into Memory
             // (Indirect, Y)
@@ -358,7 +460,7 @@ impl NESEmulator {
             0x03 => {
                 print!("SLO ({:0>2x},x)\n",self.cpu_memory[(self.pc+1) as usize]);
                 let mut addr = self.cpu_memory[(self.pc+1) as usize];
-                        addr = self.cpu_memory[(addr+self.x) as usize];
+                        addr = self.cpu_memory[(addr.wrapping_add(self.x)) as usize];
 
                 if addr >= 0b10000000 { self.set_bitflag(0,true); }
                 else { self.set_bitflag(0,false); } // set carry flag
@@ -380,7 +482,7 @@ impl NESEmulator {
             0x01 => {
                 print!("ORA ({:0>2x},x)\n",self.cpu_memory[(self.pc+1) as usize]);
                 let mut addr = self.cpu_memory[(self.pc+1) as usize];
-                        addr = self.cpu_memory[(addr+self.x) as usize];
+                        addr = self.cpu_memory[(addr.wrapping_add(self.x)) as usize];
 
                 self.a = self.a | addr;
 
@@ -398,7 +500,7 @@ impl NESEmulator {
             0x11 => {
                 print!("ORA ({:0>2x},y)\n",self.cpu_memory[(self.pc+1) as usize]);
                 let mut addr = self.cpu_memory[(self.pc+1) as usize];
-                        addr = self.cpu_memory[(addr+self.x) as usize];
+                        addr = self.cpu_memory[(addr.wrapping_add(self.x)) as usize];
 
                 self.a = self.a | addr;
 
@@ -426,8 +528,15 @@ impl NESEmulator {
                 self.set_bitflag(2,true);
                 self.pc+=0x0001; // next instruction
             },
-
-            // CLD - CLear Deciman
+            // CLC - CLear Carry
+            // Clears Carry Flag
+            // (Implied)
+            0x18 => {
+                print!("CLC\n");
+                self.set_bitflag(0,false);
+                self.pc+=0x0001; // next instruction
+            },
+            // CLD - CLear Decimal
             // Clears Decimal Flag
             // (Implied)
             0xD8 => {
@@ -449,6 +558,85 @@ impl NESEmulator {
                 print!("TOP ${:0>2x}{:0>2x}\n",self.cpu_memory[self.pc as usize+1],self.cpu_memory[self.pc as usize+2]);
                 self.pc+=0x0003; // next instruction
             },
+            // PLP - PuLl Processor status
+            // Pulls an 8 bit value from the stack and into the processor flags. The flags will take on new states as determined by the value pulled.
+            // (Implied)
+            0x28 => {
+                print!("PLP\n");
+                self.p = self.pop_from_stack();
+                self.pc+=0x0001; // next instruction
+            },
+            // DEC - Decrement Memory
+            // Subtracts one from the value held at a specified memory location setting the zero and negative flags as appropriate.
+            // (Zero Page)
+            0xc6 => {
+                print!("DEC ${:0>2x}\n",self.cpu_memory[self.pc as usize+1]);
+                let addr = self.cpu_memory[self.pc as usize+1];
+                let res = self.cpu_memory[addr as usize] - 1;
+                if res == 0x00 { self.set_bitflag(1,true); }
+                else { self.set_bitflag(1,false); } // set zero flag
+                if res >= 0b10000000 { self.set_bitflag(7,true); }
+                else { self.set_bitflag(7,false); } // set negative flag
+                self.pc += 1; // next instruction
+            },
+            // ASL - Arithmic Shift Left
+            // This operation shifts all the bits of the accumulator or memory contents one bit left. Bit 0 is set to 0 and bit 7 is placed in the carry flag. The effect of this operation is to multiply the memory contents by 2 (ignoring 2's complement considerations), setting the carry if the result will not fit in 8 bits.
+            // (Accumulator)
+            0x0a => {
+                print!("ASL A\n");
+                self.a = self.a << 1;
+                let temp = self.p;
+                self.set_bitflag(0,check_bit(temp,7)); // set carry flag
+                if self.a == 0 { self.set_bitflag(1,true); }
+                else { self.set_bitflag(1,true); } // set zero flag
+                if self.a >= 0b10000000 { self.set_bitflag(7,true); }
+                else { self.set_bitflag(7,true); } // set negative flag
+                self.pc += 1; // next instruction
+            },
+
+            // LSR - Logical Shift Right
+            // Each of the bits in A or M is shift one place to the right. The bit that was in bit 0 is shifted into the carry flag. Bit 7 is set to zero.
+            // (Zero Page)
+            0x46 => {
+                print!("LSR ${:0>2x}\n",self.cpu_memory[self.pc as usize+1]);
+                let addr = self.cpu_memory[self.pc as usize+1];
+                let mut val = self.cpu_memory[addr as usize];
+
+                self.set_bitflag(0,check_bit(val,0)); // set carry flag
+                val = val >> 1; // shift right 1 bit
+                if val == 0 { self.set_bitflag(1,true); }
+                else { self.set_bitflag(1,true); } // set zero flag
+                if self.a >= 0b10000000 { self.set_bitflag(7,true); }
+                else { self.set_bitflag(7,true); } // set negative flag
+                self.pc += 2; // next instruction
+            },
+            // LSR - Logical Shift Right
+            // Each of the bits in A or M is shift one place to the right. The bit that was in bit 0 is shifted into the carry flag. Bit 7 is set to zero.
+            // (Absolute)
+            0x4e => {
+                print!("LSR ${:0>2x}\n",self.cpu_memory[self.pc as usize+1]);
+                let addr = two_u8_to_u16(self.cpu_memory[self.pc as usize+2],self.cpu_memory[self.pc as usize+1]);
+                let mut val = self.cpu_memory[addr as usize];
+
+                self.set_bitflag(0,check_bit(val,0)); // set carry flag
+                val = val >> 1; // shift right 1 bit
+                if val == 0 { self.set_bitflag(1,true); }
+                else { self.set_bitflag(1,true); } // set zero flag
+                if self.a >= 0b10000000 { self.set_bitflag(7,true); }
+                else { self.set_bitflag(7,true); } // set negative flag
+                self.pc += 3; // next instruction
+            },
+
+            // BRK - Force Interrupt
+            // The BRK instruction forces the generation of an interrupt request. The program counter and processor status are pushed on the stack then the IRQ interrupt vector at $FFFE/F is loaded into the PC and the break flag in the status set to one.
+            // (Implied)
+            0x00 => {
+                print!("BRK\n",);
+
+                    //TODO
+
+                self.pc += 0; // next instruction
+            }
             // Default
             _ => {
                 print!("${:0>2x}\n",self.cpu_memory[self.pc as usize]);
@@ -464,6 +652,10 @@ impl NESEmulator {
         self.sp+=1; //incriment stack pointer
     }
 
+    fn pop_from_stack(&mut self) -> u8{
+        self.sp-=1; //decriment stack pointer
+        return(self.cpu_memory[0x01FF - self.sp as usize]);
+    }
     pub fn run(&mut self) {
         loop {
             print!("[0x{:0>4x}] a: ${:0>2x}, x: ${:0>2x}, y: ${:0>2x}, p: {:0>8b}, op: ", self.pc, self.a, self.x, self.y, self.p);
