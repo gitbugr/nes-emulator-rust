@@ -147,6 +147,19 @@ impl NESEmulator {
                 else { self.set_bitflag(1,false) } // set zero flag
                 self.pc+=0x0003
             },
+            // LDA - LoaD Accumulator
+            // Loads value into accumulator
+            // (Absolute, X)
+                                            // TODO When I wake up...
+            // 0xBD =>{
+            //     print!("LDA (${:0>2x}, x)\n",self.cpu_memory[(self.pc+1) as usize] as usize]);
+            //     let addr = two_u8_to_u16(0,self.cpu_memory[(self.pc+1) as usize]);
+            //     self.a = self.cpu_memory[addr as usize];
+            //     if self.a == 0 { self.set_bitflag(1,true) }
+            //     else { self.set_bitflag(1,false) } // set zero flag
+            //     self.pc+=0x0003
+            // },
+
             // LDX - LoaD X register
             // Loads value into x register
             // (Immediate)
@@ -173,9 +186,23 @@ impl NESEmulator {
             0x29 =>{
                 print!("AND #{:0>2x}\n",self.cpu_memory[(self.pc+1) as usize]);
                 self.a = self.a & self.cpu_memory[(self.pc+1) as usize];
-                if self.x == 0 { self.set_bitflag(1,true) }
+                if self.a == 0 { self.set_bitflag(1,true) }
                 else { self.set_bitflag(1,false) } // set zero flag
                 self.pc+=0x0002
+            },
+            // AND - bitwise function
+            // performs bitwise AND with accumulator
+            // (Absolute, X)
+            0x3d =>{
+                print!("AND ${:0>2x}{:0>2x}\n",self.cpu_memory[(self.pc+2) as usize],self.cpu_memory[(self.pc+1) as usize]);
+
+                let addr:u16 = two_u8_to_u16(self.cpu_memory[(self.pc+2) as usize],self.cpu_memory[(self.pc+1) as usize]) + (self.x as u16);
+
+                self.a = self.a & self.cpu_memory[addr as usize];
+
+                if self.a == 0 { self.set_bitflag(1,true) }
+                else { self.set_bitflag(1,false) } // set zero flag
+                self.pc+=0x0003
             },
             // BEQ - branch on equal
             // branches if last result was equal
@@ -191,7 +218,22 @@ impl NESEmulator {
                 else {
                     self.pc+=0x0002;
                 }
-            }
+            },
+            // BNE - branch not equal
+            // If the zero flag is clear then add the relative displacement to the program counter to cause a branch to a new location.
+            // (Immediate)
+            0xD0 => {
+                print!("BNE #{:0>2x}\n",self.cpu_memory[(self.pc+1) as usize]);
+                if !check_bit(self.p, 1) {
+                    if self.cpu_memory[(self.pc+1) as usize] > 0x7F
+                        { self.pc += two_u8_to_u16(0,self.cpu_memory[(self.pc+1) as usize] - 0x7F); }
+                    else
+                        { self.pc -= two_u8_to_u16(0,0x7F - self.cpu_memory[(self.pc+1) as usize]); }
+                }
+                else {
+                    self.pc+=0x0002;
+                }
+            },
             // STA - STore Accumulator
             // Stores Accumulator into Memory
             // (Absolute)
@@ -210,6 +252,14 @@ impl NESEmulator {
                 let addr1 = self.cpu_memory[two_u8_to_u16(0,zp) as usize];
                 let addr2 = self.cpu_memory[two_u8_to_u16(0,zp+1) as usize];
                 self.a = self.cpu_memory[(two_u8_to_u16(addr2,addr1) + (self.y as u16)) as usize];
+                self.pc+=0x0002
+            },
+            // STA - STore Accumulator
+            // Stores Accumulator into Memory
+            // (Indirect, Y)
+            0x85 =>{
+                print!("STA ${:0>2x}\n",self.cpu_memory[(self.pc+1) as usize]);
+                self.cpu_memory[(self.pc+1) as usize] = self.a;
                 self.pc+=0x0002
             },
             // STY - STore Y register
@@ -235,7 +285,15 @@ impl NESEmulator {
             // (Implied)
             0x88 =>{
                 print!("DEY\n");
-                self.y-=1;
+                if self.y == 0 { self.y = 0xff }
+                else { self.y-=1; }
+
+                if self.y == 0 { self.set_bitflag(1,true); }
+                else { self.set_bitflag(1,false); }
+
+                if self.y >= 0x80 { self.set_bitflag(7,true); }
+                else { self.set_bitflag(7,false); }
+
                 self.pc+=0x0001
             },
             // CPY - Compare Y Register

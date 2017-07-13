@@ -13,7 +13,7 @@ Non-Indexed, non memory
 
 Non-Indexed memory ops
 > Relative: Only used for branch ops. Offset of PC. Singed byte.	(2 bytes)
-> Absolute: Memory location exactly. (little endian)	`JMP $4032`	(3 bytes)
+> Absolute: Memo	ry location exactly. (little endian)	`JMP $4032`	(3 bytes)
 > Zero-Page: Only capable of addressing first 256 bytes	`LDA $35`	(2 bytes)
 > Indirect: JMP op only - sets PC to addr def at pointer`JMP ($1000)`	(3 bytes)
 > 
